@@ -1,0 +1,48 @@
+name: Delete VPN File After 30 Days
+
+on:
+  push:
+    paths:
+      - 'CidrVPN.txt'
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  check-and-delete:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get file creation date
+        id: file_date
+        run: |
+          CREATION_DATE=$(git log --diff-filter=A --format=%ai -- CidrVPN.txt | tail -1)
+          echo "creation_date=$CREATION_DATE" >> $GITHUB_OUTPUT
+
+      - name: Check if 30 days passed
+        id: check
+        run: |
+          CREATION_TIMESTAMP=$(date -d "${{ steps.file_date.outputs.creation_date }}" +%s)
+          CURRENT_TIMESTAMP=$(date +%s)
+          DIFF=$(( (CURRENT_TIMESTAMP - CREATION_TIMESTAMP) / 86400 ))
+          echo "days=$DIFF" >> $GITHUB_OUTPUT
+          if [ $DIFF -ge 30 ]; then
+            echo "delete=true" >> $GITHUB_OUTPUT
+          else
+            echo "delete=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete file if 30 days passed
+        if: steps.check.outputs.delete == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm CidrVPN.txt
+          git commit -m "Auto-delete CidrVPN.txt after 30 days"
+          git push
